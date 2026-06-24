@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  ECR repository + GitHub OIDC provider + least-privilege IAM role
+  for pushing Docker images from GitHub Actions.
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Description: GitHub username that owns the repository
+
+  GitHubRepo:
+    Type: String
+    Description: GitHub repository name (without the org prefix)
+
+  ECRRepositoryName:
+    Type: String
+    Default: hello-app
+    Description: Name for the private ECR repository
+
+  Environment:
+    Type: String
+    Default: lab
+    AllowedValues: [lab, dev, staging, prod]
+
+Resources:
+
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref ECRRepositoryName
+      ImageTagMutability: MUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep only the 10 most recent images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+      RepositoryPolicyText:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowGitHubActionsRole
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt GitHubActionsRole.Arn
+            Action:
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+              - ecr:BatchCheckLayerAvailability
+              - ecr:PutImage
+              - ecr:InitiateLayerUpload
+              - ecr:UploadLayerPart
+              - ecr:CompleteLayerUpload
+      Tags:
+        - Key: Project
+          Value: ecr-lab
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+ 
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "GitHubActions-ECRPush-${GitHubRepo}"
+      Description: Assumed by GitHub Actions via OIDC to push images to ECR
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: GitHubOIDCTrust
+            Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOIDCProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                # Restrict to pushes from your specific repository on any branch
+                token.actions.githubusercontent.com:sub:
+                  !Sub "repo:${GitHubOrg}/${GitHubRepo}:*"
+      Policies:
+        - PolicyName: ECRPushPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # ECR auth token (account-level, no resource restriction possible)
+              - Sid: GetAuthToken
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              # Push operations scoped to the single ECR repository
+              - Sid: PushToECR
+                Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                Resource: !GetAtt ECRRepository.Arn
+      Tags:
+        - Key: Project
+          Value: ecr-lab
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+Outputs:
+  ECRRepositoryUri:
+    Description: Full URI of the ECR repository
+    Value: !GetAtt ECRRepository.RepositoryUri
+    Export:
+      Name: !Sub "${AWS::StackName}-ECRUri"
+
+  GitHubActionsRoleArn:
+    Description: ARN of the IAM role to use in the GitHub Actions workflow
+    Value: !GetAtt GitHubActionsRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-RoleArn"
+
+  OIDCProviderArn:
+    Description: ARN of the GitHub OIDC provider
+    Value: !Ref GitHubOIDCProvider
