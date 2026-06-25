@@ -1,0 +1,63 @@
+name: Build and Push to Amazon ECR
+
+on:
+  push:
+    branches:
+      - "**"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-push:
+    name: Build Docker Image and Push to ECR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: maven
+
+      # ── Docker build (always runs) ─────────────────────────────────────────
+      - name: Build Docker image locally
+        run: |
+          docker build --tag bonheurmahoro_helloapp:local .
+          echo "Docker build succeeded"
+
+      # ── AWS steps (only run once AWS_ROLE_ARN variable is configured) ──────
+      - name: Configure AWS credentials (OIDC)
+        if: vars.AWS_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: vars.AWS_ROLE_ARN != ''
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag and push to ECR
+        if: vars.AWS_ROLE_ARN != ''
+        run: |
+          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:bonheurmahoro_helloapp"
+          docker tag bonheurmahoro_helloapp:local "$IMAGE_URI"
+          docker push "$IMAGE_URI"
+          echo "Pushed: $IMAGE_URI"
+
+      - name: Write job summary
+        run: |
+          echo "## Build Result" >> "$GITHUB_STEP_SUMMARY"
+          echo "Docker image built successfully as \`bonheurmahoro_helloapp\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${{ vars.AWS_ROLE_ARN }}" ]; then
+            echo "Image pushed to ECR ✅" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "AWS variables not yet configured — push skipped ⏭️" >> "$GITHUB_STEP_SUMMARY"
+          fi
