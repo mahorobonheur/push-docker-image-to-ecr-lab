@@ -1,6 +1,7 @@
-template-file-location: infra/ecr-oidc.yaml
+template-file-path: infra/ecr-oidc.yaml
 parameters:
   GitHubOrg: mahorobonheur
   GitHubRepo: push-docker-image-to-ecr-lab
   ECRRepositoryName: hello-app
   Environment: lab
+tags: {}
