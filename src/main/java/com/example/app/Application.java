@@ -20,6 +20,6 @@ public class Application {
 
     @GetMapping("/hello")
     public String hello() {
-        return "Hello from Bonheur Mahoro's containerized Java app!";
+        return "Hello from Bonheur Mahoro's containerized Java application!";
     }
 }
