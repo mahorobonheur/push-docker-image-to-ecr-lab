@@ -4,4 +4,5 @@ parameters:
   GitHubRepo: push-docker-image-to-ecr-lab
   ECRRepositoryName: hello-app
   Environment: lab
+  ExistingOIDCProviderArn: arn:aws:iam::714377355835:oidc-provider/token.actions.githubusercontent.com
 tags: {}
