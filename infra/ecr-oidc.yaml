@@ -129,6 +129,14 @@ Resources:
         - Key: ManagedBy
           Value: CloudFormation
 
+  ECRUriParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/ecr/${ECRRepositoryName}/uri"
+      Type: String
+      Value: !GetAtt ECRRepository.RepositoryUri
+      Description: ECR repository URI for use in CI/CD pipelines
+
 Outputs:
   ECRRepositoryUri:
     Description: Full URI of the ECR repository
