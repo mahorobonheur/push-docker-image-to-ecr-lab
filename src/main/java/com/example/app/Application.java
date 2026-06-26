@@ -22,4 +22,10 @@ public class Application {
     public String hello() {
         return "Hello from Bonheur Mahoro's containerized Java application!";
     }
+
+    @GetMapping("/b")
+    public String sayB(){
+        return "B says hi";
+    }
+
 }
